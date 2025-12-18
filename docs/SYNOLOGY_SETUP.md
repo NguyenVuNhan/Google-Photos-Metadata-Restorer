@@ -6,11 +6,12 @@ This guide explains how to set up the Google Photos Metadata Restorer on your Sy
 
 1. [Prerequisites](#prerequisites)
 2. [Installation Methods](#installation-methods)
-3. [Method A: Direct Python Installation (Recommended)](#method-a-direct-python-installation-recommended)
-4. [Method B: Docker Installation](#method-b-docker-installation)
-5. [Setting Up Scheduled Tasks](#setting-up-scheduled-tasks)
-6. [Folder Structure Recommendations](#folder-structure-recommendations)
-7. [Troubleshooting](#troubleshooting)
+3. [Method A: Pre-built Executable (Recommended)](#method-a-pre-built-executable-recommended)
+4. [Method B: Direct Python Installation](#method-b-direct-python-installation)
+5. [Method C: Docker Installation](#method-c-docker-installation)
+6. [Setting Up Scheduled Tasks](#setting-up-scheduled-tasks)
+7. [Folder Structure Recommendations](#folder-structure-recommendations)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -31,21 +32,21 @@ There are three ways to install the Metadata Restorer:
 
 | Method | Pros | Cons |
 |--------|------|------|
-| **Pre-built Executable** | Easiest, no Python needed | Still requires ExifTool |
-| **Direct Python** | Full control, easy debugging | Requires Python setup |
+| **Pre-built Executable** | Easiest, no dependencies needed, ExifTool bundled | Larger file size |
+| **Direct Python** | Full control, easy debugging | Requires Python + ExifTool setup |
 | **Docker** | Isolated environment | Requires Docker package, more resources |
 
 We recommend **Pre-built Executable** for most users.
 
 ---
 
-## Method A: Pre-built Executable (Easiest)
+## Method A: Pre-built Executable (Recommended)
 
 The pre-built executable includes ExifTool bundled inside - **no additional dependencies required!**
 
 ### Step 1: Download the Linux Executable
 
-1. Go to the [Releases page](https://github.com/yourusername/Google-Photos-Metadata-Restorer/releases)
+1. Go to the [Releases page](https://github.com/NguyenVuNhan/Google-Photos-Metadata-Restorer/releases)
 2. Download `gphotos-metadata-restorer-linux.zip`
 3. Extract and upload `gphotos-metadata-restorer` to your NAS (e.g., `/volume1/scripts/`)
 
@@ -124,11 +125,11 @@ pip install -r requirements.txt
 If not installed via SynoCommunity:
 
 ```bash
-# Download ExifTool
+# Download ExifTool from GitHub
 cd /tmp
-wget https://exiftool.org/Image-ExifTool-12.70.tar.gz
-tar -xzf Image-ExifTool-12.70.tar.gz
-cd Image-ExifTool-12.70
+wget https://github.com/exiftool/exiftool/archive/refs/tags/13.44.tar.gz
+tar -xzf 13.44.tar.gz
+cd exiftool-13.44
 
 # Install
 sudo cp -r exiftool lib /usr/local/bin/
@@ -150,7 +151,7 @@ python3 -m src.main --input /volume1/GoogleTakeout --dry-run
 
 ---
 
-## Method B: Docker Installation
+## Method C: Docker Installation
 
 ### Step 1: Install Docker
 

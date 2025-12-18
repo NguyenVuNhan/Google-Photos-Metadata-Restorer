@@ -58,11 +58,25 @@ class MediaFileMatcher:
     # Pattern for numbered duplicates: photo(1).jpg, photo(2).jpg
     NUMBERED_PATTERN = re.compile(r'^(.+?)(\(\d+\))(\.[^.]+)$')
     
-    def __init__(self):
-        """Initialize the matcher."""
+    # Default Google Takeout JSON metadata file suffixes
+    DEFAULT_JSON_SUFFIXES = [
+        '.json',                      # Standard: photo.jpg.json
+        '.supplemental-met.json',     # Supplemental: photo.jpg.supplemental-met.json
+        '.supplemental-metadata.json', # Alternative supplemental format
+    ]
+    
+    def __init__(self, json_suffixes: Optional[List[str]] = None):
+        """
+        Initialize the matcher.
+        
+        Args:
+            json_suffixes: List of JSON file suffixes to look for.
+                          Default: ['.json', '.supplemental-met.json', '.supplemental-metadata.json']
+        """
         self.matched_count = 0
         self.unmatched_count = 0
         self._json_cache: Dict[Path, List[Path]] = {}
+        self.json_suffixes = json_suffixes or self.DEFAULT_JSON_SUFFIXES
     
     def is_media_file(self, path: Path) -> bool:
         """Check if a file is a supported media file."""
@@ -79,16 +93,26 @@ class MediaFileMatcher:
     def is_json_metadata_file(self, path: Path) -> bool:
         """
         Check if a JSON file is likely a Google Takeout metadata file.
-        Metadata files have pattern: mediafile.ext.json
+        Metadata files have patterns like:
+        - mediafile.ext.json
+        - mediafile.ext.supplemental-met.json
+        - mediafile.ext.supplemental-metadata.json
         """
         if path.suffix.lower() != '.json':
             return False
         
-        # Check if removing .json gives a media extension
-        stem = path.stem  # e.g., "photo.jpg" from "photo.jpg.json"
-        potential_ext = Path(stem).suffix.lower()
+        filename = path.name.lower()
         
-        return potential_ext in MEDIA_EXTENSIONS
+        # Check against all configured JSON suffixes
+        for suffix in self.json_suffixes:
+            if filename.endswith(suffix.lower()):
+                # Extract media filename by removing the suffix
+                media_name = path.name[:-len(suffix)]
+                potential_ext = Path(media_name).suffix.lower()
+                if potential_ext in MEDIA_EXTENSIONS:
+                    return True
+        
+        return False
     
     def _get_json_files_in_directory(self, directory: Path) -> List[Path]:
         """Get cached list of JSON files in a directory."""
@@ -117,11 +141,14 @@ class MediaFileMatcher:
         directory = media_path.parent
         filename = media_path.name
         
-        # Strategy 1: Exact match (photo.jpg -> photo.jpg.json)
-        exact_json = directory / f"{filename}.json"
-        if exact_json.exists():
-            self.matched_count += 1
-            return MatchResult(media_path, exact_json, 'exact', 1.0)
+        # Strategy 1: Exact match with various JSON suffixes
+        # (photo.jpg -> photo.jpg.json, photo.jpg.supplemental-met.json, etc.)
+        for suffix in self.json_suffixes:
+            exact_json = directory / f"{filename}{suffix}"
+            if exact_json.exists():
+                self.matched_count += 1
+                match_type = 'exact' if suffix == '.json' else 'supplemental'
+                return MatchResult(media_path, exact_json, match_type, 1.0)
         
         # Strategy 2: Handle edited files (photo-edited.jpg -> photo.jpg.json)
         json_path = self._try_edited_match(media_path)
@@ -162,9 +189,11 @@ class MediaFileMatcher:
             if re.search(pattern, stem, re.IGNORECASE):
                 # Remove the edited suffix
                 original_stem = re.sub(pattern, '', stem, flags=re.IGNORECASE)
-                original_json = directory / f"{original_stem}{ext}.json"
-                if original_json.exists():
-                    return original_json
+                # Try all JSON suffix patterns
+                for json_suffix in self.json_suffixes:
+                    original_json = directory / f"{original_stem}{ext}{json_suffix}"
+                    if original_json.exists():
+                        return original_json
         
         return None
     
@@ -179,20 +208,22 @@ class MediaFileMatcher:
             number = match.group(2)
             ext = match.group(3)
             
-            # Try: photo(1).jpg.json
-            numbered_json = directory / f"{base_name}{number}{ext}.json"
-            if numbered_json.exists():
-                return numbered_json
-            
-            # Try: photo.jpg(1).json (Google sometimes does this)
-            alt_json = directory / f"{base_name}{ext}{number}.json"
-            if alt_json.exists():
-                return alt_json
-            
-            # Try: photo.jpg.json (fall back to original without number)
-            base_json = directory / f"{base_name}{ext}.json"
-            if base_json.exists():
-                return base_json
+            # Try all JSON suffix patterns
+            for json_suffix in self.json_suffixes:
+                # Try: photo(1).jpg.json
+                numbered_json = directory / f"{base_name}{number}{ext}{json_suffix}"
+                if numbered_json.exists():
+                    return numbered_json
+                
+                # Try: photo.jpg(1).json (Google sometimes does this)
+                alt_json = directory / f"{base_name}{ext}{number}{json_suffix}"
+                if alt_json.exists():
+                    return alt_json
+                
+                # Try: photo.jpg.json (fall back to original without number)
+                base_json = directory / f"{base_name}{ext}{json_suffix}"
+                if base_json.exists():
+                    return base_json
         
         return None
     
@@ -235,9 +266,10 @@ class MediaFileMatcher:
             if stem.upper().endswith(suffix):
                 # Try to find the original file's JSON
                 original_stem = stem[:-len(suffix)]
-                original_json = directory / f"{original_stem}{ext}.json"
-                if original_json.exists():
-                    return original_json
+                for json_suffix in self.json_suffixes:
+                    original_json = directory / f"{original_stem}{ext}{json_suffix}"
+                    if original_json.exists():
+                        return original_json
         
         return None
     
@@ -301,8 +333,21 @@ class MediaFileMatcher:
                 continue
             
             # Get the media filename from the JSON filename
-            # photo.jpg.json -> photo.jpg
-            media_name = json_file.stem
+            # Handle different patterns:
+            # - photo.jpg.json -> photo.jpg
+            # - photo.jpg.supplemental-met.json -> photo.jpg
+            # - photo.jpg.supplemental-metadata.json -> photo.jpg
+            json_name = json_file.name
+            media_name = None
+            
+            for suffix in self.json_suffixes:
+                if json_name.endswith(suffix):
+                    media_name = json_name[:-len(suffix)]
+                    break
+            
+            if media_name is None:
+                continue
+                
             media_path = json_file.parent / media_name
             
             if not media_path.exists():

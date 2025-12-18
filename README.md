@@ -4,7 +4,7 @@ Restore metadata (dates, GPS locations, descriptions) from Google Takeout JSON f
 
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Build Status](https://github.com/yourusername/Google-Photos-Metadata-Restorer/actions/workflows/build.yml/badge.svg)
+![Build Status](https://github.com/NguyenVuNhan/Google-Photos-Metadata-Restorer/actions/workflows/build.yml/badge.svg)
 
 ## The Problem
 
@@ -41,7 +41,7 @@ This tool:
 
 ### Option 1: Download Pre-built Executable (Easiest)
 
-Download the latest release for your platform from the [Releases page](https://github.com/yourusername/Google-Photos-Metadata-Restorer/releases):
+Download the latest release for your platform from the [Releases page](https://github.com/NguyenVuNhan/Google-Photos-Metadata-Restorer/releases):
 
 | Platform | Download |
 |----------|----------|
@@ -124,7 +124,7 @@ gphotos-metadata-restorer --input /path/to/Takeout --keep-json
 | `--keep-json` | `-k` | Keep JSON files after processing |
 | `--no-file-dates` | | Don't update file system dates |
 | `--dry-run` | `-n` | Preview changes without modifying files |
-| `--exiftool` | | Custom path to ExifTool executable |
+| `--exiftool` | | Custom path to ExifTool executable (not needed for pre-built executables) |
 | `--log-level` | `-l` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `--log-file` | | Path to log file |
 | `--version` | `-v` | Show version number |

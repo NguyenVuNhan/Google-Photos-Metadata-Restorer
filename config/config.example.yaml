@@ -47,6 +47,19 @@ dry_run: false
 # Custom path to ExifTool (leave empty for auto-detection)
 exiftool_path: ""
 
+# JSON Metadata File Settings
+# ---------------------------
+# Suffixes for JSON metadata files to look for
+# Google Takeout uses different naming patterns:
+#   - photo.jpg.json (standard)
+#   - photo.jpg.supplemental-met.json (supplemental metadata)
+#   - photo.jpg.supplemental-metadata.json (alternative)
+# Uncomment to override defaults:
+# json_suffixes:
+#   - ".json"
+#   - ".supplemental-met.json"
+#   - ".supplemental-metadata.json"
+
 # Synology Integration
 # --------------------
 # Path to Synology Photos folder (for automatic indexing)
