@@ -10,7 +10,7 @@ on:
   workflow_dispatch:  # Allow manual triggering
 
 env:
-  EXIFTOOL_VERSION: "12.97"
+  EXIFTOOL_VERSION: "13.44"
 
 jobs:
   build:
@@ -21,18 +21,12 @@ jobs:
           - os: windows-latest
             artifact_name: gphotos-metadata-restorer.exe
             asset_name: gphotos-metadata-restorer-windows
-            exiftool_url: https://exiftool.org/exiftool-12.97.zip
-            exiftool_extract: unzip
           - os: ubuntu-latest
             artifact_name: gphotos-metadata-restorer
             asset_name: gphotos-metadata-restorer-linux
-            exiftool_url: https://exiftool.org/Image-ExifTool-12.97.tar.gz
-            exiftool_extract: tar
           - os: macos-latest
             artifact_name: gphotos-metadata-restorer
             asset_name: gphotos-metadata-restorer-macos
-            exiftool_url: https://exiftool.org/Image-ExifTool-12.97.tar.gz
-            exiftool_extract: tar
 
     runs-on: ${{ matrix.os }}
 
@@ -55,22 +49,26 @@ jobs:
       - name: Download and extract ExifTool (Windows)
         if: runner.os == 'Windows'
         run: |
-          Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -OutFile exiftool.zip
+          # Download Windows standalone package from oliverbetz.de (includes bundled Perl)
+          $url = "https://oliverbetz.de/cms/files/Artikel/ExifTool-for-Windows/exiftool-${{ env.EXIFTOOL_VERSION }}_64.zip"
+          Invoke-WebRequest -Uri $url -OutFile exiftool.zip
           Expand-Archive -Path exiftool.zip -DestinationPath exiftool_temp
           New-Item -ItemType Directory -Force -Path exiftool
-          Move-Item -Path exiftool_temp/exiftool*.exe -Destination exiftool/exiftool.exe
+          # Copy exiftool.exe and required files
+          Copy-Item -Path "exiftool_temp/exiftool.exe" -Destination "exiftool/exiftool.exe"
+          Copy-Item -Path "exiftool_temp/exiftool_files" -Destination "exiftool/exiftool_files" -Recurse
           Remove-Item -Recurse -Force exiftool_temp, exiftool.zip
 
       - name: Download and extract ExifTool (Unix)
         if: runner.os != 'Windows'
         run: |
-          curl -L -o exiftool.tar.gz "${{ matrix.exiftool_url }}"
+          curl -L -o exiftool.tar.gz "https://github.com/exiftool/exiftool/archive/refs/tags/${{ env.EXIFTOOL_VERSION }}.tar.gz"
           tar -xzf exiftool.tar.gz
           mkdir -p exiftool
-          mv Image-ExifTool-*/exiftool exiftool/
-          mv Image-ExifTool-*/lib exiftool/
+          mv exiftool-${{ env.EXIFTOOL_VERSION }}/exiftool exiftool/
+          mv exiftool-${{ env.EXIFTOOL_VERSION }}/lib exiftool/
           chmod +x exiftool/exiftool
-          rm -rf Image-ExifTool-* exiftool.tar.gz
+          rm -rf exiftool-${{ env.EXIFTOOL_VERSION }} exiftool.tar.gz
 
       - name: Build executable with PyInstaller (Unix)
         if: runner.os != 'Windows'

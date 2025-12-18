@@ -35,13 +35,16 @@ def get_bundled_exiftool_path() -> Optional[str]:
     """
     # Check if running as a PyInstaller bundle
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
-        bundle_dir = sys._MEIPASS
+        # Running as compiled executable - ExifTool is in the exiftool subfolder
+        bundle_dir = Path(sys._MEIPASS) / 'exiftool'
     else:
         # Running as script - check if exiftool is in the project
         bundle_dir = Path(__file__).parent.parent / 'exiftool'
         if not bundle_dir.exists():
             return None
+    
+    if not bundle_dir.exists():
+        return None
     
     # Determine the ExifTool executable name based on platform
     if platform.system() == 'Windows':
@@ -49,7 +52,7 @@ def get_bundled_exiftool_path() -> Optional[str]:
     else:
         exiftool_name = 'exiftool'
     
-    exiftool_path = Path(bundle_dir) / exiftool_name
+    exiftool_path = bundle_dir / exiftool_name
     
     if exiftool_path.exists():
         # Ensure it's executable on Unix systems
@@ -61,8 +64,8 @@ def get_bundled_exiftool_path() -> Optional[str]:
         return str(exiftool_path)
     
     # Check for Perl-based ExifTool (exiftool script + lib folder)
-    exiftool_script = Path(bundle_dir) / 'exiftool'
-    exiftool_lib = Path(bundle_dir) / 'lib'
+    exiftool_script = bundle_dir / 'exiftool'
+    exiftool_lib = bundle_dir / 'lib'
     
     if exiftool_script.exists() and exiftool_lib.exists():
         if platform.system() != 'Windows':
