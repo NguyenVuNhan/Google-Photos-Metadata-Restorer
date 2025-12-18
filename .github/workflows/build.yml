@@ -1,0 +1,151 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  EXIFTOOL_VERSION: "12.97"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: gphotos-metadata-restorer.exe
+            asset_name: gphotos-metadata-restorer-windows
+            exiftool_url: https://exiftool.org/exiftool-12.97.zip
+            exiftool_extract: unzip
+          - os: ubuntu-latest
+            artifact_name: gphotos-metadata-restorer
+            asset_name: gphotos-metadata-restorer-linux
+            exiftool_url: https://exiftool.org/Image-ExifTool-12.97.tar.gz
+            exiftool_extract: tar
+          - os: macos-latest
+            artifact_name: gphotos-metadata-restorer
+            asset_name: gphotos-metadata-restorer-macos
+            exiftool_url: https://exiftool.org/Image-ExifTool-12.97.tar.gz
+            exiftool_extract: tar
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Download and extract ExifTool (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri "${{ matrix.exiftool_url }}" -OutFile exiftool.zip
+          Expand-Archive -Path exiftool.zip -DestinationPath exiftool_temp
+          New-Item -ItemType Directory -Force -Path exiftool
+          Move-Item -Path exiftool_temp/exiftool*.exe -Destination exiftool/exiftool.exe
+          Remove-Item -Recurse -Force exiftool_temp, exiftool.zip
+
+      - name: Download and extract ExifTool (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          curl -L -o exiftool.tar.gz "${{ matrix.exiftool_url }}"
+          tar -xzf exiftool.tar.gz
+          mkdir -p exiftool
+          mv Image-ExifTool-*/exiftool exiftool/
+          mv Image-ExifTool-*/lib exiftool/
+          chmod +x exiftool/exiftool
+          rm -rf Image-ExifTool-* exiftool.tar.gz
+
+      - name: Build executable with PyInstaller (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          pyinstaller --onefile --name gphotos-metadata-restorer --console --add-data "exiftool:exiftool" run.py
+
+      - name: Build executable with PyInstaller (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --onefile --name gphotos-metadata-restorer --console --add-data "exiftool;exiftool" run.py
+
+      - name: Test executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\dist\gphotos-metadata-restorer.exe --version
+          .\dist\gphotos-metadata-restorer.exe --help
+
+      - name: Test executable (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x ./dist/gphotos-metadata-restorer
+          ./dist/gphotos-metadata-restorer --version
+          ./dist/gphotos-metadata-restorer --help
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.artifact_name }}
+          retention-days: 30
+
+  # Create release when a tag is pushed
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp artifacts/gphotos-metadata-restorer-windows/gphotos-metadata-restorer.exe release/gphotos-metadata-restorer.exe
+          cp artifacts/gphotos-metadata-restorer-linux/gphotos-metadata-restorer release/gphotos-metadata-restorer-linux-bin
+          cp artifacts/gphotos-metadata-restorer-macos/gphotos-metadata-restorer release/gphotos-metadata-restorer-macos-bin
+          chmod +x release/gphotos-metadata-restorer-linux-bin
+          chmod +x release/gphotos-metadata-restorer-macos-bin
+          # Create zip archives - rename executables to gphotos-metadata-restorer inside zips
+          cd release
+          zip gphotos-metadata-restorer-windows.zip gphotos-metadata-restorer.exe
+          mv gphotos-metadata-restorer-linux-bin gphotos-metadata-restorer && zip gphotos-metadata-restorer-linux.zip gphotos-metadata-restorer && rm gphotos-metadata-restorer
+          mv gphotos-metadata-restorer-macos-bin gphotos-metadata-restorer && zip gphotos-metadata-restorer-macos.zip gphotos-metadata-restorer
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/gphotos-metadata-restorer-windows.zip
+            release/gphotos-metadata-restorer-linux.zip
+            release/gphotos-metadata-restorer-macos.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

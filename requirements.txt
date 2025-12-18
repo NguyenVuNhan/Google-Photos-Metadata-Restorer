@@ -1,0 +1,28 @@
+# Google Photos Metadata Restorer Dependencies
+
+# ExifTool wrapper for Python
+PyExifTool>=0.5.6
+
+# Image processing
+Pillow>=10.0.0
+
+# Configuration file handling
+PyYAML>=6.0
+
+# Progress bars
+tqdm>=4.66.0
+
+# Date/time handling
+python-dateutil>=2.8.2
+
+# CLI argument parsing (built-in, listed for reference)
+# argparse
+
+# Logging (built-in, listed for reference)
+# logging
+
+# ============================================
+# Development / Build Dependencies
+# ============================================
+# Uncomment these if building executables locally:
+# pyinstaller>=6.0.0

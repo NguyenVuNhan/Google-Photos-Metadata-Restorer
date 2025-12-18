@@ -1,0 +1,77 @@
+# Google Photos Metadata Restorer Configuration
+# =============================================
+# Copy this file to config.yaml and modify as needed
+
+# Input/Output Settings
+# ---------------------
+# Path to Google Takeout folder or ZIP files
+input_folder: "/volume1/GoogleTakeout"
+
+# Path where extracted/processed files will be saved
+# Leave empty to process in-place
+output_folder: "/volume1/photo/GooglePhotos"
+
+# ZIP Extraction Settings
+# -----------------------
+# Whether to extract ZIP files before processing
+extract_zips: true
+
+# Whether to delete ZIP files after successful extraction
+delete_zips_after_extraction: false
+
+# Preserve original folder structure from Google Takeout
+preserve_folder_structure: true
+
+# Metadata Settings
+# -----------------
+# Whether to overwrite existing metadata in media files
+overwrite_existing_metadata: false
+
+# Whether to update file system dates (creation/modification time)
+update_file_dates: true
+
+# Delete JSON metadata files after successful processing
+delete_json_after_processing: true
+
+# Metadata Fields to Restore
+# --------------------------
+restore_dates: true
+restore_gps: true
+restore_description: true
+
+# Processing Options
+# ------------------
+# Dry run mode - show what would be done without making changes
+dry_run: false
+
+# Custom path to ExifTool (leave empty for auto-detection)
+exiftool_path: ""
+
+# Synology Integration
+# --------------------
+# Path to Synology Photos folder (for automatic indexing)
+synology_photos_folder: "/volume1/photo"
+
+# Trigger Synology Photos re-indexing after processing
+# (requires synoindex command)
+auto_index_after_processing: true
+
+# Logging Settings
+# ----------------
+# Log level: DEBUG, INFO, WARNING, ERROR
+log_level: "INFO"
+
+# Log file path (leave empty to log only to console)
+log_file: "/var/log/metadata-restorer.log"
+
+# Automation Settings (for scheduled tasks)
+# -----------------------------------------
+# Watch folder for new ZIP files (for continuous monitoring)
+watch_mode: false
+
+# Interval in seconds to check for new files (when watch_mode is true)
+watch_interval: 300
+
+# Move processed files to a "completed" folder
+move_completed_zips: false
+completed_folder: "/volume1/GoogleTakeout/completed"
