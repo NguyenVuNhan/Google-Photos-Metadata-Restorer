@@ -21,7 +21,8 @@ jobs:
           - os: windows-latest
             artifact_name: gphotos-metadata-restorer.exe
             asset_name: gphotos-metadata-restorer-windows
-          - os: ubuntu-latest
+          # Use ubuntu-20.04 for older GLIBC compatibility (works on Synology DSM)
+          - os: ubuntu-20.04
             artifact_name: gphotos-metadata-restorer
             asset_name: gphotos-metadata-restorer-linux
           - os: macos-latest
