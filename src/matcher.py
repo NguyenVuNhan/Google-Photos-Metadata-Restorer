@@ -60,8 +60,9 @@ class MediaFileMatcher:
     
     # Default Google Takeout JSON metadata file suffixes
     DEFAULT_JSON_SUFFIXES = [
-        '.json',                      # Standard: photo.jpg.json
-        '.supplemental-met.json',     # Supplemental: photo.jpg.supplemental-met.json
+        '.json',                       # Standard: photo.jpg.json
+        '.supplemental-.json',         # Alternate: photo.jpg.supplemental-.json
+        '.supplemental-met.json',      # Supplemental: photo.jpg.supplemental-met.json
         '.supplemental-metadata.json', # Alternative supplemental format
     ]
     
