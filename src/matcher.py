@@ -58,15 +58,12 @@ class MediaFileMatcher:
     # Pattern for numbered duplicates: photo(1).jpg, photo(2).jpg
     NUMBERED_PATTERN = re.compile(r'^(.+?)(\(\d+\))(\.[^.]+)$')
     
-    # Base JSON suffix patterns that Google Photos uses
-    # "supplemental-metadata" gets truncated at various points to fit filename limits
-    SUPPLEMENTAL_METADATA_FULL = 'supplemental-metadata'
-    
     # Generate all possible truncations of "supplemental-metadata" dynamically
+    # Google Photos truncates this suffix at various points to fit filename limits
     # This creates: ['.json', '.s.json', '.su.json', ..., '.supplemental-metadata.json']
     DEFAULT_JSON_SUFFIXES = ['.json'] + [
-        f'.{SUPPLEMENTAL_METADATA_FULL[:i]}.json' 
-        for i in range(1, len(SUPPLEMENTAL_METADATA_FULL) + 1)
+        f'.{"supplemental-metadata"[:i]}.json' 
+        for i in range(1, len('supplemental-metadata') + 1)
     ]
     
     def __init__(self, json_suffixes: Optional[List[str]] = None):
