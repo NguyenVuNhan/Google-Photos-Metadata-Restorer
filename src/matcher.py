@@ -42,8 +42,8 @@ class MatchResult:
 class MediaFileMatcher:
     """Matches media files with their Google Takeout JSON metadata files."""
     
-    # Google often truncates filenames at 47 characters (before extension)
-    GOOGLE_FILENAME_LIMIT = 47
+    # Google often truncates filenames at around 51 characters (total including extension)
+    GOOGLE_FILENAME_LIMIT = 51
     
     # Pattern for edited files: original-edited.jpg, original-bearbeitet.jpg, etc.
     EDITED_PATTERNS = [
@@ -58,26 +58,11 @@ class MediaFileMatcher:
     # Pattern for numbered duplicates: photo(1).jpg, photo(2).jpg
     NUMBERED_PATTERN = re.compile(r'^(.+?)(\(\d+\))(\.[^.]+)$')
     
-    # Generate all possible truncations of "supplemental-metadata" dynamically
-    # Google Photos truncates this suffix at various points to fit filename limits
-    # This creates: ['.json', '.s.json', '.su.json', ..., '.supplemental-metadata.json']
-    DEFAULT_JSON_SUFFIXES = ['.json'] + [
-        f'.{"supplemental-metadata"[:i]}.json' 
-        for i in range(1, len('supplemental-metadata') + 1)
-    ]
-    
-    def __init__(self, json_suffixes: Optional[List[str]] = None):
-        """
-        Initialize the matcher.
-        
-        Args:
-            json_suffixes: List of JSON file suffixes to look for.
-                          Default: ['.json', '.supplemental-met.json', '.supplemental-metadata.json']
-        """
+    def __init__(self):
+        """Initialize the matcher."""
         self.matched_count = 0
         self.unmatched_count = 0
         self._json_cache: Dict[Path, List[Path]] = {}
-        self.json_suffixes = json_suffixes or self.DEFAULT_JSON_SUFFIXES
     
     def is_media_file(self, path: Path) -> bool:
         """Check if a file is a supported media file."""
@@ -94,24 +79,34 @@ class MediaFileMatcher:
     def is_json_metadata_file(self, path: Path) -> bool:
         """
         Check if a JSON file is likely a Google Takeout metadata file.
-        Metadata files have patterns like:
-        - mediafile.ext.json
-        - mediafile.ext.supplemental-met.json
-        - mediafile.ext.supplemental-metadata.json
+        Handles truncated filenames where Google cuts off part of the name.
         """
         if path.suffix.lower() != '.json':
             return False
         
-        filename = path.name.lower()
+        filename = path.name
         
-        # Check against all configured JSON suffixes
-        for suffix in self.json_suffixes:
-            if filename.endswith(suffix.lower()):
-                # Extract media filename by removing the suffix
-                media_name = path.name[:-len(suffix)]
-                potential_ext = Path(media_name).suffix.lower()
-                if potential_ext in MEDIA_EXTENSIONS:
+        # Remove .json suffix to get the base
+        base = filename[:-5]  # Remove '.json'
+        
+        # Check if it looks like a media filename (possibly truncated)
+        # Look for common image/video extension patterns anywhere in the name
+        # because Google may truncate: "photo.jpg" -> "photo.j" or "photo.jp"
+        ext_patterns = [ext.lstrip('.') for ext in MEDIA_EXTENSIONS]
+        
+        for ext in ext_patterns:
+            # Check for full extension
+            if base.lower().endswith(f'.{ext}'):
+                return True
+            # Check for truncated extensions (at least 1 char after the dot)
+            for i in range(1, len(ext)):
+                if base.lower().endswith(f'.{ext[:i]}'):
                     return True
+        
+        # Also check for supplemental metadata patterns
+        # e.g., "photo.jpg.supplemental-met" or "photo.jpg.supplem"
+        if '.supplemental' in base.lower() or '.supplem' in base.lower():
+            return True
         
         return False
     
@@ -142,32 +137,31 @@ class MediaFileMatcher:
         directory = media_path.parent
         filename = media_path.name
         
-        # Strategy 1: Exact match with various JSON suffixes
-        # (photo.jpg -> photo.jpg.json, photo.jpg.supplemental-met.json, etc.)
-        for suffix in self.json_suffixes:
-            exact_json = directory / f"{filename}{suffix}"
-            if exact_json.exists():
-                self.matched_count += 1
-                match_type = 'exact' if suffix == '.json' else 'supplemental'
-                return MatchResult(media_path, exact_json, match_type, 1.0)
+        # Strategy 1: Exact match (photo.jpg -> photo.jpg.json)
+        exact_json = directory / f"{filename}.json"
+        if exact_json.exists():
+            self.matched_count += 1
+            return MatchResult(media_path, exact_json, 'exact', 1.0)
         
-        # Strategy 2: Handle edited files (photo-edited.jpg -> photo.jpg.json)
+        # Strategy 2: Truncated filename match
+        # Google truncates long filenames, so we look for JSON files that 
+        # start with a truncated version of our media filename
+        json_path = self._try_truncated_match(media_path)
+        if json_path:
+            self.matched_count += 1
+            return MatchResult(media_path, json_path, 'truncated', 0.95)
+        
+        # Strategy 3: Handle edited files (photo-edited.jpg -> photo.jpg.json)
         json_path = self._try_edited_match(media_path)
         if json_path:
             self.matched_count += 1
             return MatchResult(media_path, json_path, 'edited', 0.9)
         
-        # Strategy 3: Handle numbered duplicates (photo(1).jpg -> photo.jpg.json or photo(1).jpg.json)
+        # Strategy 4: Handle numbered duplicates (photo(1).jpg -> photo.jpg.json or photo(1).jpg.json)
         json_path = self._try_numbered_match(media_path)
         if json_path:
             self.matched_count += 1
             return MatchResult(media_path, json_path, 'numbered', 0.85)
-        
-        # Strategy 4: Handle truncated filenames
-        json_path = self._try_truncated_match(media_path)
-        if json_path:
-            self.matched_count += 1
-            return MatchResult(media_path, json_path, 'truncated', 0.8)
         
         # Strategy 5: Handle supplementary files like -EFFECTS, -ANIMATION, -COLLAGE
         json_path = self._try_supplementary_match(media_path)
@@ -190,11 +184,15 @@ class MediaFileMatcher:
             if re.search(pattern, stem, re.IGNORECASE):
                 # Remove the edited suffix
                 original_stem = re.sub(pattern, '', stem, flags=re.IGNORECASE)
-                # Try all JSON suffix patterns
-                for json_suffix in self.json_suffixes:
-                    original_json = directory / f"{original_stem}{ext}{json_suffix}"
-                    if original_json.exists():
-                        return original_json
+                original_json = directory / f"{original_stem}{ext}.json"
+                if original_json.exists():
+                    return original_json
+                # Also try truncated match for the original
+                original_media = directory / f"{original_stem}{ext}"
+                if not original_media.exists():
+                    # Create a fake path for truncated matching
+                    original_media = media_path.parent / f"{original_stem}{ext}"
+                return self._try_truncated_match(original_media)
         
         return None
     
@@ -209,50 +207,88 @@ class MediaFileMatcher:
             number = match.group(2)
             ext = match.group(3)
             
-            # Try all JSON suffix patterns
-            for json_suffix in self.json_suffixes:
-                # Try: photo(1).jpg.json
-                numbered_json = directory / f"{base_name}{number}{ext}{json_suffix}"
-                if numbered_json.exists():
-                    return numbered_json
-                
-                # Try: photo.jpg(1).json (Google sometimes does this)
-                alt_json = directory / f"{base_name}{ext}{number}{json_suffix}"
-                if alt_json.exists():
-                    return alt_json
-                
-                # Try: photo.jpg.json (fall back to original without number)
-                base_json = directory / f"{base_name}{ext}{json_suffix}"
-                if base_json.exists():
-                    return base_json
+            # Try: photo(1).jpg.json
+            numbered_json = directory / f"{base_name}{number}{ext}.json"
+            if numbered_json.exists():
+                return numbered_json
+            
+            # Try: photo.jpg(1).json (Google sometimes does this)
+            alt_json = directory / f"{base_name}{ext}{number}.json"
+            if alt_json.exists():
+                return alt_json
+            
+            # Try: photo.jpg.json (fall back to original without number)
+            base_json = directory / f"{base_name}{ext}.json"
+            if base_json.exists():
+                return base_json
+            
+            # Try truncated matching for numbered files
+            return self._try_truncated_match(media_path)
         
         return None
     
     def _try_truncated_match(self, media_path: Path) -> Optional[Path]:
-        """Try to match files that may have been truncated by Google."""
-        stem = media_path.stem
-        ext = media_path.suffix
+        """
+        Try to match files where Google has truncated the JSON filename.
+        
+        Google Takeout truncates long filenames at around 51 characters total.
+        Examples:
+        - "Screenshot_20210414-123045_Google Play Store.jpg" 
+          -> "Screenshot_20210414-123045_Google Play Store.j.json" (truncated .jpg to .j)
+        - "Screenshot_20210608-182630_Samsung Experience H.jpg"
+          -> "Screenshot_20210608-182630_Samsung Experience .json" (truncated before extension)
+        """
         directory = media_path.parent
+        media_filename = media_path.name  # e.g., "Screenshot_20210414-123045_Google Play Store.jpg"
         
-        # If the filename (without extension) is exactly at the limit,
-        # it might be truncated
-        if len(stem) >= self.GOOGLE_FILENAME_LIMIT - 1:
-            # Look for JSON files that start with the truncated name
-            json_files = self._get_json_files_in_directory(directory)
-            
-            truncated_stem = stem[:self.GOOGLE_FILENAME_LIMIT - 5]  # Leave room for variation
-            
-            for json_file in json_files:
-                json_stem = json_file.stem  # e.g., "verylongfilename.jpg" from "verylongfilename.jpg.json"
-                
-                # Check if the JSON file's media name starts with our truncated name
-                if json_stem.startswith(truncated_stem):
-                    # Verify the extension matches
-                    potential_ext = Path(json_stem).suffix.lower()
-                    if potential_ext == ext.lower():
-                        return json_file
+        # Get all JSON files in the directory
+        json_files = self._get_json_files_in_directory(directory)
         
-        return None
+        if not json_files:
+            return None
+        
+        # For each JSON file, check if the media filename starts with 
+        # what the JSON filename represents (minus .json suffix)
+        best_match = None
+        best_match_len = 0
+        
+        for json_file in json_files:
+            json_name = json_file.name  # e.g., "Screenshot_20210414-123045_Google Play Store.j.json"
+            
+            # Remove .json suffix to get the truncated media name
+            if not json_name.lower().endswith('.json'):
+                continue
+            
+            truncated_name = json_name[:-5]  # Remove '.json'
+            
+            # Handle supplemental metadata patterns
+            # e.g., "photo.jpg.supplem" should match "photo.jpg"
+            supplem_patterns = ['.supplemental-metadata', '.supplemental-met', '.supplemental', '.supplem', '.supple', '.suppl', '.supp', '.sup', '.su', '.s']
+            for pattern in supplem_patterns:
+                if truncated_name.lower().endswith(pattern):
+                    truncated_name = truncated_name[:-len(pattern)]
+                    break
+            
+            # Check if our media filename starts with the truncated name
+            # The truncated name might be missing part of the extension or filename
+            if len(truncated_name) < 5:  # Too short to be meaningful
+                continue
+            
+            # Check if media filename starts with the truncated JSON base
+            if media_filename.lower().startswith(truncated_name.lower()):
+                # This is a potential match - prefer longer matches
+                if len(truncated_name) > best_match_len:
+                    best_match = json_file
+                    best_match_len = len(truncated_name)
+            
+            # Also check if the truncated name is a prefix of our full filename
+            # Handle case: "photo.j" matches "photo.jpg"
+            elif truncated_name.lower().rstrip() == media_filename[:len(truncated_name.rstrip())].lower():
+                if len(truncated_name) > best_match_len:
+                    best_match = json_file
+                    best_match_len = len(truncated_name)
+        
+        return best_match
     
     def _try_supplementary_match(self, media_path: Path) -> Optional[Path]:
         """Try to match supplementary files (effects, animations, collages)."""
@@ -267,10 +303,12 @@ class MediaFileMatcher:
             if stem.upper().endswith(suffix):
                 # Try to find the original file's JSON
                 original_stem = stem[:-len(suffix)]
-                for json_suffix in self.json_suffixes:
-                    original_json = directory / f"{original_stem}{ext}{json_suffix}"
-                    if original_json.exists():
-                        return original_json
+                original_json = directory / f"{original_stem}{ext}.json"
+                if original_json.exists():
+                    return original_json
+                # Also try truncated match
+                original_media = directory / f"{original_stem}{ext}"
+                return self._try_truncated_match(original_media)
         
         return None
     
@@ -334,24 +372,33 @@ class MediaFileMatcher:
                 continue
             
             # Get the media filename from the JSON filename
-            # Handle different patterns:
-            # - photo.jpg.json -> photo.jpg
-            # - photo.jpg.supplemental-met.json -> photo.jpg
-            # - photo.jpg.supplemental-metadata.json -> photo.jpg
+            # Handle truncated names by extracting the base
             json_name = json_file.name
-            media_name = None
             
-            for suffix in self.json_suffixes:
-                if json_name.endswith(suffix):
-                    media_name = json_name[:-len(suffix)]
+            if not json_name.lower().endswith('.json'):
+                continue
+            
+            # Remove .json suffix
+            base = json_name[:-5]
+            
+            # Remove supplemental metadata suffix if present
+            supplem_patterns = ['.supplemental-metadata', '.supplemental-met', '.supplemental', 
+                              '.supplem', '.supple', '.suppl', '.supp', '.sup', '.su', '.s']
+            for pattern in supplem_patterns:
+                if base.lower().endswith(pattern):
+                    base = base[:-len(pattern)]
                     break
             
-            if media_name is None:
-                continue
-                
-            media_path = json_file.parent / media_name
+            # Check if any media file in the directory starts with this base
+            # (to handle truncated filenames)
+            has_match = False
+            for media_file in json_file.parent.iterdir():
+                if media_file.is_file() and self.is_media_file(media_file):
+                    if media_file.name.lower().startswith(base.lower().rstrip()):
+                        has_match = True
+                        break
             
-            if not media_path.exists():
+            if not has_match:
                 orphaned.append(json_file)
         
         logger.info(f"Found {len(orphaned)} orphaned JSON files")

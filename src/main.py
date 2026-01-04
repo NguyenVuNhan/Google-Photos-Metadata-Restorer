@@ -44,8 +44,7 @@ class MetadataRestorer:
         delete_json: bool = True,
         update_file_dates: bool = True,
         dry_run: bool = False,
-        exiftool_path: Optional[str] = None,
-        json_suffixes: Optional[list] = None
+        exiftool_path: Optional[str] = None
     ):
         """
         Initialize the metadata restorer.
@@ -59,7 +58,6 @@ class MetadataRestorer:
             update_file_dates: Whether to update file system dates
             dry_run: If True, don't make any changes
             exiftool_path: Custom path to ExifTool
-            json_suffixes: List of JSON file suffixes to look for
         """
         self.input_path = input_path
         self.output_path = output_path or input_path
@@ -69,7 +67,6 @@ class MetadataRestorer:
         self.update_file_dates = update_file_dates
         self.dry_run = dry_run
         self.exiftool_path = exiftool_path
-        self.json_suffixes = json_suffixes
         
         # Statistics
         self.stats = {
@@ -156,7 +153,7 @@ class MetadataRestorer:
         logger.info("Step 2: Finding and matching files")
         logger.info("-" * 40)
         
-        matcher = MediaFileMatcher(json_suffixes=self.json_suffixes)
+        matcher = MediaFileMatcher()
         matches = matcher.find_all_matches(path, recursive=True)
         
         self.stats["media_files_found"] = len(matches)
@@ -331,7 +328,6 @@ def merge_args_with_config(args: argparse.Namespace, config: Dict[str, Any]) -> 
         'exiftool_path': 'exiftool',
         'log_level': 'log_level',
         'log_file': 'log_file',
-        'json_suffixes': 'json_suffixes',
     }
     
     for config_key, arg_key in config_mapping.items():
@@ -375,9 +371,6 @@ Examples:
 
   # Keep JSON files after processing
   gphotos-metadata-restorer --input /path/to/Takeout --keep-json
-
-  # Use only specific JSON suffixes
-  gphotos-metadata-restorer --input /path/to/Takeout --json-suffixes .json .supplemental-met.json
 
   # Synology example
   gphotos-metadata-restorer --input /volume1/GoogleTakeout --output /volume1/photo
@@ -465,16 +458,6 @@ For more information, see: https://github.com/NguyenVuNhan/Google-Photos-Metadat
         help='Log file path'
     )
     
-    parser.add_argument(
-        '--json-suffixes',
-        type=str,
-        nargs='+',
-        default=None,
-        metavar='SUFFIX',
-        help='JSON metadata file suffixes to look for (default: .json .supplemental-met.json .supplemental-metadata.json). '
-             'Example: --json-suffixes .json .supplemental-met.json'
-    )
-    
     return parser.parse_args()
 
 
@@ -528,8 +511,7 @@ def main():
             delete_json=not args.keep_json,
             update_file_dates=not args.no_file_dates,
             dry_run=args.dry_run,
-            exiftool_path=args.exiftool,
-            json_suffixes=args.json_suffixes
+            exiftool_path=args.exiftool
         )
         
         stats = restorer.run()

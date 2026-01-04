@@ -26,3 +26,9 @@ python-dateutil>=2.8.2
 # ============================================
 # Uncomment these if building executables locally:
 # pyinstaller>=6.0.0
+
+# ============================================
+# Testing Dependencies
+# ============================================
+pytest>=7.4.0
+pytest-cov>=4.1.0
