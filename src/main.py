@@ -73,12 +73,16 @@ class MetadataRestorer:
             "start_time": None,
             "end_time": None,
             "zips_extracted": 0,
+            "zips_deleted": 0,
             "media_files_found": 0,
             "media_files_matched": 0,
             "metadata_injected": 0,
             "injection_failed": 0,
             "json_files_deleted": 0,
         }
+        
+        # Track extracted ZIP files for later deletion
+        self._extracted_zip_files: list = []
     
     def run(self) -> dict:
         """
@@ -119,6 +123,10 @@ class MetadataRestorer:
         if self.delete_json and processed_json_files:
             self._cleanup_json_files(processed_json_files)
         
+        # Step 5: Delete ZIP files if extraction was successful and all metadata was injected
+        if self.delete_zips and self._extracted_zip_files:
+            self._cleanup_zip_files()
+        
         # Final statistics
         self.stats["end_time"] = time.time()
         self._print_summary()
@@ -131,7 +139,8 @@ class MetadataRestorer:
         logger.info("Step 1: Extracting ZIP files")
         logger.info("-" * 40)
         
-        extractor = ZipExtractor(delete_after_extraction=self.delete_zips)
+        # Don't delete ZIPs during extraction - we'll delete after successful processing
+        extractor = ZipExtractor(delete_after_extraction=False)
         
         # Preserve folder structure as requested
         results = extractor.extract_all(
@@ -141,6 +150,9 @@ class MetadataRestorer:
         )
         
         self.stats["zips_extracted"] = results["successful"]
+        
+        # Track extracted ZIP files for later deletion
+        self._extracted_zip_files = [Path(p) for p in results.get("extracted_files", [])]
         
         if results["successful"] == 0 and results["total"] > 0:
             return None
@@ -259,6 +271,50 @@ class MetadataRestorer:
         else:
             logger.info(f"Deleted {result.deleted_count} JSON files")
     
+    def _cleanup_zip_files(self):
+        """Clean up ZIP files after successful metadata injection."""
+        logger.info("-" * 40)
+        logger.info("Step 5: Cleaning up ZIP files")
+        logger.info("-" * 40)
+        
+        # Only delete if ALL media files found their metadata
+        unmatched_count = self.stats["media_files_found"] - self.stats["media_files_matched"]
+        if unmatched_count > 0:
+            logger.warning(
+                f"Skipping ZIP deletion: {unmatched_count} media file(s) did not have matching JSON metadata. "
+                "Ensure all media files have corresponding JSON files, or manually delete the ZIP files."
+            )
+            return
+        
+        # Only delete if all injections were successful (no failures)
+        if self.stats["injection_failed"] > 0:
+            logger.warning(
+                f"Skipping ZIP deletion: {self.stats['injection_failed']} file(s) failed metadata injection. "
+                "Fix the issues and re-run, or manually delete the ZIP files."
+            )
+            return
+        
+        deleted_count = 0
+        for zip_path in self._extracted_zip_files:
+            try:
+                if self.dry_run:
+                    logger.debug(f"Would delete ZIP: {zip_path.name}")
+                    deleted_count += 1
+                else:
+                    if zip_path.exists():
+                        zip_path.unlink()
+                        logger.debug(f"Deleted ZIP: {zip_path.name}")
+                        deleted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete ZIP {zip_path.name}: {e}")
+        
+        self.stats["zips_deleted"] = deleted_count
+        
+        if self.dry_run:
+            logger.info(f"Would delete {deleted_count} ZIP file(s)")
+        else:
+            logger.info(f"Deleted {deleted_count} ZIP file(s)")
+    
     def _print_summary(self):
         """Print final summary."""
         duration = self.stats["end_time"] - self.stats["start_time"]
@@ -270,6 +326,8 @@ class MetadataRestorer:
         
         if self.extract_zips:
             logger.info(f"ZIP files extracted: {self.stats['zips_extracted']}")
+            if self.delete_zips:
+                logger.info(f"ZIP files deleted: {self.stats['zips_deleted']}")
         
         logger.info(f"Media files found: {self.stats['media_files_found']}")
         logger.info(f"Media files with metadata: {self.stats['media_files_matched']}")
